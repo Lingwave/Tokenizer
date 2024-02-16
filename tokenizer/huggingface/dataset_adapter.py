@@ -21,19 +21,18 @@ class DatasetAdapter():
         self.root_dir =  os.path.join(storage_dir, repo_dir)
         self.cache_dir = os.path.join(self.root_dir, "cache")
         self.local_dir = os.path.join(self.root_dir, "current")
-        self.loaded = False
+        self.loading_started = False
 
     def list_files(self) -> list[str]:
-        if not self.loaded:
+        if not self.loading_started:
             self.load()
-            self.loaded = True
         
         all_paths = glob.glob(self.local_dir + '/**/*', recursive=True)
         
         return list(filter(os.path.isfile, all_paths))
 
-    def calculate_checksum(self, file: str) -> str:
-        with os.open(file) as file:
+    def calculate_checksum(self, path: str) -> str:
+        with open(path, 'rb') as file:
             file_hash = hashlib.md5()
             while chunk := file.read(8192):
                 file_hash.update(chunk)
@@ -62,7 +61,7 @@ class DatasetAdapter():
     def verify_local_stats(self) -> bool:
         stats_path = os.path.join(self.root_dir, "stats.json")
         try:
-            with os.open(stats_path) as stats_file:
+            with open(stats_path, 'rb') as stats_file:
                 data = json.load(stats_file)
                 
                 expected_files = data['files']
@@ -71,27 +70,38 @@ class DatasetAdapter():
         except:
             return False
         
+        
+    def stat_file(self, file: str) -> CachedFileStats:
+        file_stats = {}
+        file_stats["checksum"] = self.calculate_checksum(file)
+        file_stats["file"] = self
+        return file_stats
+        
     def stat_download(self):
         local_files = self.list_files()
+        
+        file_stats = [self.stat_file(file) for file in local_files]
+        stats_path = os.path.join(self.root_dir, "stats.json")
+        with open(stats_path, 'w') as json_file:
+            json.dump(file_stats, json_file)
+        
 
     def load(self):
-        
-        
+        self.loading_started = True
         if self.verify_local_stats():
             print("Using local cached version of dataset")
             
         else:
             print("Downloading fresh dataset")
-            snapshot_download(
-                repo_id=self.id,
-                repo_type="dataset",
-                cache_dir=self.cache_dir,
-                local_dir=self.local_dir,
-                resume_download=True,
-                force_download=True,
-            )
+            # snapshot_download(
+            #     repo_id=self.id,
+            #     repo_type="dataset",
+            #     cache_dir=self.cache_dir,
+            #     local_dir=self.local_dir,
+            #     resume_download=True,
+            # )
+            self.stat_download()
 
-        self.loaded = True
 
 
         
